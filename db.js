@@ -1,5 +1,5 @@
 const DB_NAME = "jagdtrainer_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -10,6 +10,7 @@ function openDB() {
       if (!db.objectStoreNames.contains("state")) db.createObjectStore("state", { keyPath: "id" });
       if (!db.objectStoreNames.contains("settings")) db.createObjectStore("settings", { keyPath: "key" });
       if (!db.objectStoreNames.contains("stats")) db.createObjectStore("stats", { keyPath: "day" });
+      if (!db.objectStoreNames.contains("examRuns")) db.createObjectStore("examRuns", { keyPath: "id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

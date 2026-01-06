@@ -250,3 +250,23 @@ pre{ margin:0; white-space:pre-wrap; color: #c7d2fe; font-size:12.5px; line-heig
 @media (max-width: 520px){
   .footerRow{ flex-direction:column; align-items:stretch; }
 }
+
+
+.examMeta{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.examNav{
+  display:flex;
+  gap:10px;
+  margin-top:12px;
+}
+.homeExamState{
+  font-size:14px;
+  font-weight:700;
+  margin-top:6px;
+}
+.btn.danger{
+  border-color: rgba(255,80,80,.35);
+}

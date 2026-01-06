@@ -47,17 +47,19 @@
                 <div class="k" id="homeGoalState">–</div>
                 <div class="v">Tagesziel</div>
               </div>
+              <div class="todayKpi">
+                <div class="k" id="homeAcc7">–</div>
+                <div class="v">Ø 7 Tage</div>
+              </div>
             </div>
-
-            <label class="field">
-              <span>Tagesziel (Bewertungen)</span>
-              <input id="dailyGoal" type="number" min="5" max="500" step="5" value="50" />
-            </label>
-
-            <div class="bar">
+<div class="bar">
               <div class="barfill" id="homeGoalBar"></div>
             </div>
             <div class="tiny muted" id="homeGoalText">0 / 50</div>
+
+            <div class="divider"></div>
+            <div class="tiny muted">Prüfungssimulation heute</div>
+            <div class="homeExamState" id="homeExamState">–</div>
           </div>
 
           <div class="card">
@@ -106,6 +108,13 @@
               <span>Karten pro Durchgang</span>
               <input id="sessionSize" type="number" min="5" max="200" step="1" value="30" />
             </label>
+
+            <label class="field">
+              <span>Tagesziel (Bewertungen)</span>
+              <input id="dailyGoal" type="number" min="5" max="500" step="5" value="50" />
+            </label>
+            <div class="hint">Tipp: Jede Bewertung (Again/Hard/Good/Easy) zählt 1 fürs Tagesziel.</div>
+
 
             <label class="field">
               <span>Modus</span>
@@ -164,6 +173,13 @@
             <div class="muted" id="progressText">0 / 0</div>
             <div class="bar"><div class="barfill" id="barFill"></div></div>
           </div>
+
+          <div class="examMeta hidden" id="examMeta">
+            <span class="pill" id="examTimer">100:00</span>
+            <span class="muted" id="examAnswered">0/100</span>
+            <button class="btn danger small" id="btnExamSubmit">Abgeben</button>
+          </div>
+
           <div class="review-actions">
             <button class="btn ghost" id="btnBackToSetup">Setup</button>
           </div>
@@ -181,6 +197,11 @@
             <div id="optList" class="optList"></div>
             <button class="btn" id="btnCheck">Antwort prüfen</button>
             <div class="resultLine" id="resultLine"></div>
+
+            <div class="row examNav hidden" id="examNav">
+              <button class="btn ghost" id="btnExamPrev">Zurück</button>
+              <button class="btn" id="btnExamNext">Weiter</button>
+            </div>
           </div>
 
           <div id="flashArea" class="flashArea hidden">
