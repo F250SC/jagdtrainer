@@ -230,3 +230,23 @@ pre{ margin:0; white-space:pre-wrap; color: #c7d2fe; font-size:12.5px; line-heig
   .startActions{ flex-direction:column; }
   .startActions .btn + .btn{ margin-left:0; margin-top:10px; }
 }
+
+
+.footerRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.btn.small{
+  padding:8px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.hidden{ display:none !important; }
+
+@media (max-width: 520px){
+  .footerRow{ flex-direction:column; align-items:stretch; }
+}

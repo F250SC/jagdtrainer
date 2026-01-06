@@ -451,12 +451,67 @@ $("btnResetAll").onclick=resetAll;
 });
 
 async function registerSW(){
-  if (!("serviceWorker" in navigator)){ $("swState").textContent="Kein Service Worker"; return; }
+  const swState = $("swState");
+  const btnUpdate = $("btnUpdate");
+
+  if (!("serviceWorker" in navigator)){
+    if (swState) swState.textContent = "Kein Service Worker";
+    return;
+  }
+
+  let refreshing = false;
+
+  // When controller changes, reload once so the new SW takes over.
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+
   try{
-    const reg=await navigator.serviceWorker.register("./sw.js");
-    $("swState").textContent="Offline bereit";
-    reg.addEventListener("updatefound", ()=> $("swState").textContent="Update verfügbar");
-  } catch(e){ console.warn(e); $("swState").textContent="SW Fehler"; }
+    const reg = await navigator.serviceWorker.register("./sw.js");
+    if (swState) swState.textContent = "Offline bereit";
+
+    // If there's already a waiting worker (e.g., after background update), show button
+    if (reg.waiting && btnUpdate){
+      btnUpdate.classList.remove("hidden");
+      if (swState) swState.textContent = "Update verfügbar";
+    }
+
+    reg.addEventListener("updatefound", () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+
+      if (swState) swState.textContent = "Update wird geladen…";
+
+      newWorker.addEventListener("statechange", () => {
+        // When installed and there's an existing controller, it's an update
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller){
+          if (swState) swState.textContent = "Update verfügbar";
+          if (btnUpdate) btnUpdate.classList.remove("hidden");
+        }
+      });
+    });
+
+    if (btnUpdate){
+      btnUpdate.addEventListener("click", async () => {
+        const waiting = reg.waiting;
+        if (!waiting){
+          // If no waiting SW, force an update check and try again
+          try{ await reg.update(); } catch {}
+          if (swState) swState.textContent = "Kein Update gefunden";
+          btnUpdate.classList.add("hidden");
+          return;
+        }
+        if (swState) swState.textContent = "Installiere Update…";
+        waiting.postMessage({ type: "SKIP_WAITING" });
+        // controllerchange will reload the app
+      });
+    }
+  } catch(e){
+    console.warn(e);
+    if (swState) swState.textContent = "SW Fehler";
+  }
 }
 
 (async function init(){
