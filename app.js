@@ -482,61 +482,148 @@ async function registerSW(){
 
   if (!("serviceWorker" in navigator)){
     if (swState) swState.textContent = "Kein Service Worker";
+    if (btnUpdate) btnUpdate.disabled = true;
     return;
   }
 
   let refreshing = false;
-
-  // When controller changes, reload once so the new SW takes over.
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
     refreshing = true;
+    // New SW took control → reload once.
     location.reload();
   });
 
+  const setBtn = (label, mode) => {
+    if (!btnUpdate) return;
+    btnUpdate.textContent = label;
+    btnUpdate.dataset.mode = mode; // "check" | "install"
+    btnUpdate.disabled = false;
+  };
+
+  const setState = (t) => { if (swState) swState.textContent = t; };
+
+  // Register once (normal URL). We'll force-update with cache-bust on demand.
+  let reg;
   try{
-    const reg = await navigator.serviceWorker.register("./sw.js");
-    if (swState) swState.textContent = "Offline bereit";
-
-    // If there's already a waiting worker (e.g., after background update), show button
-    if (reg.waiting && btnUpdate){
-      btnUpdate.classList.remove("hidden");
-      if (swState) swState.textContent = "Update verfügbar";
-    }
-
-    reg.addEventListener("updatefound", () => {
-      const newWorker = reg.installing;
-      if (!newWorker) return;
-
-      if (swState) swState.textContent = "Update wird geladen…";
-
-      newWorker.addEventListener("statechange", () => {
-        // When installed and there's an existing controller, it's an update
-        if (newWorker.state === "installed" && navigator.serviceWorker.controller){
-          if (swState) swState.textContent = "Update verfügbar";
-          if (btnUpdate) btnUpdate.classList.remove("hidden");
-        }
-      });
-    });
-
-    if (btnUpdate){
-      btnUpdate.addEventListener("click", async () => {
-        const waiting = reg.waiting;
-        if (!waiting){
-          // If no waiting SW, force an update check and try again
-          try{ await reg.update(); } catch {}
-          if (swState) swState.textContent = "Kein Update gefunden";
-          btnUpdate.classList.add("hidden");
-          return;
-        }
-        if (swState) swState.textContent = "Installiere Update…";
-        waiting.postMessage({ type: "SKIP_WAITING" });
-        // controllerchange will reload the app
-      });
-    }
+    reg = await navigator.serviceWorker.register("./sw.js");
+    setState("Offline bereit");
   } catch(e){
     console.warn(e);
-    if (swState) swState.textContent = "SW Fehler";
+    setState("SW Fehler");
+    if (btnUpdate) btnUpdate.disabled = true;
+    return;
+  }
+
+  // If an update is already waiting (rare), offer install immediately.
+  if (reg.waiting){
+    setState("Update verfügbar");
+    setBtn("Update installieren", "install");
+  } else {
+    setBtn("Auf Update prüfen", "check");
+  }
+
+  // Track installing worker when update is found
+  let pendingWorker = null;
+
+  reg.addEventListener("updatefound", () => {
+    const w = reg.installing;
+    if (!w) return;
+    pendingWorker = w;
+    setState("Update wird geladen…");
+    w.addEventListener("statechange", () => {
+      // If installed and we already have a controller, it's an update waiting to activate.
+      if (w.state === "installed" && navigator.serviceWorker.controller){
+        setState("Update verfügbar");
+        setBtn("Update installieren", "install");
+      }
+      // First install (no controller yet)
+      if (w.state === "activated" && !navigator.serviceWorker.controller){
+        setState("Offline bereit");
+      }
+    });
+  });
+
+  async function forceCheck(){
+    if (!btnUpdate) return;
+    btnUpdate.disabled = true;
+    setState("Prüfe Update…");
+
+    try{
+      // iOS/Safari can cache sw.js aggressively; re-register with a cache-busting query.
+      const cb = Date.now();
+      reg = await navigator.serviceWorker.register(`./sw.js?cb=${cb}`);
+      await reg.update();
+
+      // If a waiting worker exists right away, great:
+      if (reg.waiting){
+        setState("Update verfügbar");
+        setBtn("Update installieren", "install");
+        return;
+      }
+
+      // If installing, wait briefly for it to become installed/waiting
+      const w = reg.installing || pendingWorker;
+      if (w){
+        await new Promise((resolve) => {
+          const timeout = setTimeout(resolve, 3500);
+          const onChange = () => {
+            if (w.state === "installed" || w.state === "redundant" || w.state === "activated"){
+              clearTimeout(timeout);
+              w.removeEventListener("statechange", onChange);
+              resolve();
+            }
+          };
+          w.addEventListener("statechange", onChange);
+        });
+      }
+
+      if (reg.waiting){
+        setState("Update verfügbar");
+        setBtn("Update installieren", "install");
+      } else {
+        setState("Kein Update gefunden");
+        setBtn("Auf Update prüfen", "check");
+      }
+    } catch(e){
+      console.warn(e);
+      setState("Update-Check fehlgeschlagen");
+      setBtn("Auf Update prüfen", "check");
+    }
+  }
+
+  async function installUpdate(){
+    if (!btnUpdate) return;
+    btnUpdate.disabled = true;
+    setState("Installiere Update…");
+
+    try{
+      const w = reg.waiting;
+      if (!w){
+        // No waiting worker anymore; try check again
+        setState("Kein Update bereit");
+        setBtn("Auf Update prüfen", "check");
+        return;
+      }
+      w.postMessage({ type: "SKIP_WAITING" });
+      // controllerchange listener will reload.
+      // If iOS fails to fire controllerchange, do a safety reload after a moment.
+      setTimeout(() => {
+        if (!refreshing) location.reload();
+      }, 1500);
+    } catch(e){
+      console.warn(e);
+      setState("Update fehlgeschlagen");
+      setBtn("Auf Update prüfen", "check");
+    }
+  }
+
+  if (btnUpdate){
+    btnUpdate.addEventListener("click", async () => {
+      const mode = btnUpdate.dataset.mode || "check";
+      if (mode === "install") await installUpdate();
+      else await forceCheck();
+    });
   }
 }
 
