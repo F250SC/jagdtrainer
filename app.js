@@ -104,12 +104,14 @@ function readSetupUI(){
   settings.mode = $("mode").value;
   settings.randomOrder = $("randomOrder").checked;
   settings.mixSubjects = $("mixSubjects").checked;
+  if ($("dailyGoal")) settings.dailyGoal = clamp(parseInt($("dailyGoal").value || "50",10), 5, 500);
 }
 
 function readHomeUI(){
   if ($("homeSessionSize")) settings.sessionSize = clamp(parseInt($("homeSessionSize").value || "30",10), 5, 200);
   if ($("homeRandomOrder")) settings.randomOrder = $("homeRandomOrder").checked;
   if ($("homeMixSubjects")) settings.mixSubjects = $("homeMixSubjects").checked;
+  if ($("dailyGoal")) settings.dailyGoal = clamp(parseInt($("dailyGoal").value || "50",10), 5, 500);
 }
 async function saveSetupUI(){ readSetupUI(); await dbPut("settings",{key:"main",value:settings}); }
 
@@ -295,7 +297,6 @@ async function renderHome(){
   if ($("homeAcc")) $("homeAcc").textContent = `${acc}%`;
 
   const goal = settings.dailyGoal || 50;
-  if ($("homeGoalValue")) $("homeGoalValue").textContent = goal;
   const reached = done >= goal;
   if ($("homeGoalState")) $("homeGoalState").textContent = reached ? "✅" : "⏳";
   const pct = goal ? Math.min(100, Math.round((done/goal)*100)) : 0;
@@ -430,7 +431,6 @@ $("btnStartLearn").onclick = () => startSession("flash");
 $("btnStartExam").onclick = () => startSession("exam");
 $("btnBackToSetup").onclick = async () => { await saveSetupUI(); await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
 $("btnSettings").onclick = async () => { await saveSetupUI(); showPanel("setup"); $("subtitle").textContent = "Setup"; };
-$("btnSetupBack").onclick = async () => { await saveSetupUI(); await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
 $("btnHome").onclick = async () => { await saveHomeUI(); await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
 $("btnStats").onclick = async () => { await renderStats(); await renderHome(); showPanel("stats"); $("subtitle").textContent = "Statistiken"; };
 $("btnStatsBack").onclick = async () => { await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
@@ -467,73 +467,82 @@ $("fileImport").addEventListener("change", async(e)=>{
 $("btnImportSample").onclick=loadSample;
 $("btnResetAll").onclick=resetAll;
 
-["sessionSize","mode","randomOrder","mixSubjects","dailyGoal"].forEach(id=>$(id).addEventListener("change", async()=>{ await saveSetupUI(); }));
+["sessionSize","mode","randomOrder","mixSubjects"].forEach(id=>$(id).addEventListener("change", async()=>{ await saveSetupUI(); }));
 
 // Home autosave
-["homeSessionSize","homeRandomOrder","homeMixSubjects"].forEach(id=>{
+["homeSessionSize","homeRandomOrder","homeMixSubjects","dailyGoal"].forEach(id=>{
   const el = $(id);
   if (!el) return;
   el.addEventListener("change", async()=>{ await saveHomeUI(); await renderHome(); });
 });
 
 async function registerSW(){
-  const swState = $("swState");
-  const btnUpdate = $("btnUpdate");
-  const setState = (t) => { if (swState) swState.textContent = t; };
-
-  // Update button: ALWAYS works (hard refresh)
-  async function hardRefresh(){
-    if (btnUpdate){
-      btnUpdate.disabled = true;
-      btnUpdate.textContent = "Aktualisiere…";
-    }
-    setState("Update wird installiert…");
-
-    try{
-      // 1) Unregister SW (kills stale caches in iOS PWA containers)
-      if ("serviceWorker" in navigator){
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(r => r.unregister()));
-      }
-
-      // 2) Clear all caches
-      if ("caches" in window){
-        const keys = await caches.keys();
-        await Promise.all(keys.map(k => caches.delete(k)));
-      }
-
-      // 3) Force a fresh reload bypassing URL caches
-      const u = new URL(location.href);
-      u.searchParams.set("reload", String(Date.now()));
-      location.replace(u.toString());
-    } catch(e){
-      console.warn(e);
-      setState("Update Check fehlgeschlagen");
-      if (btnUpdate){
-        btnUpdate.disabled = false;
-        btnUpdate.textContent = "Auf Update prüfen";
-      }
-    }
-  }
-
-  if (btnUpdate){
-    btnUpdate.disabled = false;
-    btnUpdate.textContent = "Auf Update prüfen";
-    btnUpdate.onclick = hardRefresh;
-  }
-
-  // Normal SW registration (for offline)
-  if (!("serviceWorker" in navigator)){
-    setState("Kein Service Worker");
+  if (window.__NOSW__){
+    const swState = $("swState");
+    if (swState) swState.textContent = "SW deaktiviert (Notfallmodus)";
     return;
   }
 
+  const swState = $("swState");
+  const btnUpdate = $("btnUpdate");
+
+  if (!("serviceWorker" in navigator)){
+    if (swState) swState.textContent = "Kein Service Worker";
+    return;
+  }
+
+  let refreshing = false;
+
+  // When controller changes, reload once so the new SW takes over.
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+
   try{
-    await navigator.serviceWorker.register("./sw.js");
-    setState("Offline bereit");
+    const reg = await navigator.serviceWorker.register("./sw.js");
+    if (swState) swState.textContent = "Offline bereit";
+
+    // If there's already a waiting worker (e.g., after background update), show button
+    if (reg.waiting && btnUpdate){
+      btnUpdate.classList.remove("hidden");
+      if (swState) swState.textContent = "Update verfügbar";
+    }
+
+    reg.addEventListener("updatefound", () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+
+      if (swState) swState.textContent = "Update wird geladen…";
+
+      newWorker.addEventListener("statechange", () => {
+        // When installed and there's an existing controller, it's an update
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller){
+          if (swState) swState.textContent = "Update verfügbar";
+          if (btnUpdate) btnUpdate.classList.remove("hidden");
+        }
+      });
+    });
+
+    if (btnUpdate){
+      btnUpdate.addEventListener("click", async () => {
+        const waiting = reg.waiting;
+        if (!waiting){
+          // If no waiting SW, force an update check and try again
+          try{ await reg.update(); } catch {}
+          if (swState) swState.textContent = "Kein Update gefunden";
+          btnUpdate.classList.add("hidden");
+          return;
+        }
+        if (swState) swState.textContent = "Installiere Update…";
+        waiting.postMessage({ type: "SKIP_WAITING" });
+        // controllerchange will reload the app
+      });
+    }
   } catch(e){
     console.warn(e);
-    setState("SW Fehler");
+    if (swState) swState.textContent = "SW Fehler";
   }
 }
 

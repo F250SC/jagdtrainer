@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <title>Jagdtrainer Bayern</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=1767717403" />
 </head>
 <body>
   <div id="app">
@@ -49,13 +49,10 @@
               </div>
             </div>
 
-            <div class="field">
-              <span>Tagesziel</span>
-              <div class="inlineInfo">
-                <strong id="homeGoalValue">50</strong> Bewertungen / Tag
-                <span class="muted">· im Setup ändern</span>
-              </div>
-            </div>
+            <label class="field">
+              <span>Tagesziel (Bewertungen)</span>
+              <input id="dailyGoal" type="number" min="5" max="500" step="5" value="50" />
+            </label>
 
             <div class="bar">
               <div class="barfill" id="homeGoalBar"></div>
@@ -99,30 +96,52 @@
       </section>
 
 
-      
       <section class="panel hidden" id="panelSetup" aria-hidden="true">
-        <div class="panelHead">
-          <h2>Setup</h2>
-          <div class="panelHeadActions">
-            <button class="btn ghost" id="btnSetupBack">Zurück</button>
-          </div>
-        </div>
+        <h2>Setup</h2>
 
         <div class="grid2">
           <div class="card">
+            <h3>Durchgang</h3>
+            <label class="field">
+              <span>Karten pro Durchgang</span>
+              <input id="sessionSize" type="number" min="5" max="200" step="1" value="30" />
+            </label>
+
+            <label class="field">
+              <span>Modus</span>
+              <select id="mode">
+                <option value="exam">Prüfungsmodus (Antwort wählen)</option>
+                <option value="flash">Klassisch (Antwort erst zeigen)</option>
+              </select>
+            </label>
+
+            <label class="field row">
+              <input id="randomOrder" type="checkbox" checked />
+              <span>Fragen zufällig (keine Reihenfolge)</span>
+            </label>
+
+            <label class="field row">
+              <input id="mixSubjects" type="checkbox" checked />
+              <span>Sachgebiete mischen</span>
+            </label>
+
+            <div class="hint">
+              Tipp: Im Prüfungsmodus wählst du erst die Antwort, dann bewertest du (Again/Hard/Good/Easy).
+            </div>
+          </div>
+
+          <div class="card">
             <h3>Inhalte</h3>
-            <p class="muted">Wähle Sachgebiete aus, die in Lernkarten & Prüfung vorkommen sollen.</p>
             <div id="subjectList" class="chips"></div>
 
             <div class="divider"></div>
 
             <h4>Import</h4>
+            <p class="muted">CSV oder JSON importieren (lokal – bleibt auf deinem iPhone).</p>
             <div class="rowgap">
               <input type="file" id="fileImport" accept=".csv,.json" />
-              <div class="inlineBtns">
-                <button class="btn" id="btnImportSample">Sample laden</button>
-                <button class="btn danger" id="btnResetAll">Alles zurücksetzen</button>
-              </div>
+              <button class="btn" id="btnImportSample">Sample laden</button>
+              <button class="btn danger" id="btnResetAll">Alles zurücksetzen</button>
             </div>
 
             <details class="details">
@@ -132,46 +151,12 @@
               </div>
             </details>
           </div>
+        </div>
 
-          <div class="card">
-            <h3>Training</h3>
-            <p class="muted">Diese Einstellungen gelten als Standard für deine Durchgänge.</p>
-
-            <label class="field">
-              <span>Tagesziel (Bewertungen pro Tag)</span>
-              <input id="dailyGoal" type="number" min="5" max="500" step="5" value="50" />
-            </label>
-
-            <label class="field">
-              <span>Karten pro Durchgang</span>
-              <input id="sessionSize" type="number" min="5" max="200" step="1" value="30" />
-            </label>
-
-            <label class="field">
-              <span>Standard-Modus</span>
-              <select id="mode">
-                <option value="exam">Prüfung (Antwort wählen)</option>
-                <option value="flash">Lernkarten (Antwort anzeigen)</option>
-              </select>
-            </label>
-
-            <label class="field row">
-              <input id="randomOrder" type="checkbox" checked />
-              <span>Fragen zufällig</span>
-            </label>
-
-            <label class="field row">
-              <input id="mixSubjects" type="checkbox" checked />
-              <span>Sachgebiete mischen</span>
-            </label>
-
-            <div class="hint">
-              Auf der Startseite kannst du jederzeit mit einem Tippen „Lernkarten“ oder „Prüfung“ starten.
-            </div>
-          </div>
+        <div class="actions">
+          <button class="btn primary" id="btnStart">Durchgang starten</button>
         </div>
       </section>
-
 
       <section class="panel hidden" id="panelReview" aria-hidden="true">
         <div class="review-head">
@@ -260,11 +245,73 @@
     <footer class="footer">
       <div class="footerRow">
         <span class="muted">Offline-PWA · Daten bleiben lokal · <span id="swState">Cache…</span></span>
-        <button class="btn small" id="btnUpdate">Auf Update prüfen</button>
+        <button class="btn small hidden" id="btnUpdate">Notfall-Update</button>
       </div>
     </footer>
   </div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=1767717403"></script>
+
+<script>
+(function(){
+  // Visible error banner
+  function showBanner(msg){
+    let el = document.getElementById("bootError");
+    if(!el){
+      el = document.createElement("div");
+      el.id="bootError";
+      el.style.cssText="position:fixed;left:12px;right:12px;bottom:70px;z-index:99999;padding:12px 14px;border-radius:14px;background:#3b0a0a;color:#fff;border:1px solid rgba(255,255,255,.25);font-family:system-ui;font-size:13px;line-height:1.35;white-space:pre-wrap;";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+  }
+
+  window.addEventListener("error", function(e){
+    showBanner("⚠️ JavaScript Fehler (Buttons reagieren dann nicht)\n" + (e && e.message ? e.message : String(e)));
+  });
+  window.addEventListener("unhandledrejection", function(e){
+    showBanner("⚠️ Promise Fehler\n" + (e && e.reason ? String(e.reason) : "unbekannt"));
+  });
+
+  async function nukeSWAndCaches(){
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+    } catch(_e){}
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch(_e){}
+  }
+
+  const btn = document.getElementById("btnUpdate");
+  if(btn){
+    btn.textContent = "Notfall-Update (Cache leeren)";
+    btn.onclick = async function(){
+      btn.disabled = true;
+      btn.textContent = "Leere Cache…";
+      await nukeSWAndCaches();
+      const u = new URL(location.href);
+      u.searchParams.set("nosw","1");
+      u.searchParams.set("reload", String(Date.now()));
+      location.replace(u.toString());
+    };
+  }
+
+  // If URL has nosw=1, we keep SW disabled on this run
+  const params = new URLSearchParams(location.search);
+  if(params.get("nosw")==="1"){
+    // mark for app.js to read
+    window.__NOSW__ = true;
+    // show small hint once
+    console.log("NOSW mode active");
+  }
+})();
+</script>
+
 </body>
 </html>
