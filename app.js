@@ -115,6 +115,8 @@ function readHomeUI(){
 }
 async function saveSetupUI(){ readSetupUI(); await dbPut("settings",{key:"main",value:settings}); }
 
+async function saveHomeUI(){ readHomeUI(); await dbPut("settings",{key:"main",value:settings}); writeSetupUI(); }
+
 function eligibleCards(){
   const subjects = Object.entries(settings.subjectsOn).filter(([,on])=>on).map(([k])=>k);
   return allCards.filter(c=>subjects.includes(c.subject));
@@ -254,13 +256,34 @@ async function rateCurrent(rate){
   renderCard(session.queue[session.idx]);
 }
 
-async function startSession(){
-  await saveSetupUI();
-  if (!Object.entries(settings.subjectsOn).some(([,v])=>v)){ alert("Bitte mindestens ein Sachgebiet aktivieren."); return; }
-  session.queue=pickSessionQueue(); session.idx=0;
-  if (!session.queue.length){ alert("Keine Karten gefunden. Bitte importieren oder Sample laden."); return; }
-  $("subtitle").textContent="Läuft…";
-  showPanel("review"); updateProgress(); renderCard(session.queue[0]);
+async function startSession(forcedMode){
+  // Start from Home or Setup. Home can force mode (flash/exam).
+  if (forcedMode) settings.mode = forcedMode;
+
+  const homeVisible = panels.home && !panels.home.classList.contains("hidden");
+  if (homeVisible){
+    await saveHomeUI();
+  } else {
+    await saveSetupUI();
+  }
+
+  if (!Object.entries(settings.subjectsOn).some(([,v])=>v)){
+    alert("Bitte mindestens ein Sachgebiet aktivieren.");
+    return;
+  }
+
+  session.queue = pickSessionQueue();
+  session.idx = 0;
+
+  if (!session.queue.length){
+    alert("Keine Karten gefunden. Bitte importieren oder Sample laden.");
+    return;
+  }
+
+  $("subtitle").textContent = (settings.mode === "exam") ? "Prüfung läuft…" : "Lernkarten laufen…";
+  showPanel("review");
+  updateProgress();
+  renderCard(session.queue[0]);
 }
 
 async function renderHome(){
@@ -403,11 +426,14 @@ async function resetAll(){
 }
 
 // Wire UI
-$("btnStart").onclick=startSession;
-$("btnBackToSetup").onclick=async()=>{ await saveSetupUI(); showPanel("setup"); $("subtitle").textContent="Lernkarten · Prüfungsnah · Offline"; };
-$("btnSettings").onclick=async()=>{ await saveSetupUI(); showPanel("setup"); };
-$("btnStats").onclick=async()=>{ await renderStats(); showPanel("stats"); };
-$("btnStatsBack").onclick=async()=>{ showPanel("setup"); };
+$("btnStart").onclick = () => startSession();
+$("btnStartLearn").onclick = () => startSession("flash");
+$("btnStartExam").onclick = () => startSession("exam");
+$("btnBackToSetup").onclick = async () => { await saveSetupUI(); await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
+$("btnSettings").onclick = async () => { await saveSetupUI(); showPanel("setup"); $("subtitle").textContent = "Setup"; };
+$("btnHome").onclick = async () => { await saveHomeUI(); await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
+$("btnStats").onclick = async () => { await renderStats(); await renderHome(); showPanel("stats"); $("subtitle").textContent = "Statistiken"; };
+$("btnStatsBack").onclick = async () => { await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
 
 $("btnReveal").onclick=()=>revealFlash(session.current);
 $("btnCheck").onclick=()=>checkExam(session.current);
