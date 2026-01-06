@@ -49,10 +49,13 @@
               </div>
             </div>
 
-            <label class="field">
-              <span>Tagesziel (Bewertungen)</span>
-              <input id="dailyGoal" type="number" min="5" max="500" step="5" value="50" />
-            </label>
+            <div class="field">
+              <span>Tagesziel</span>
+              <div class="inlineInfo">
+                <strong id="homeGoalValue">50</strong> Bewertungen / Tag
+                <span class="muted">· im Setup ändern</span>
+              </div>
+            </div>
 
             <div class="bar">
               <div class="barfill" id="homeGoalBar"></div>
@@ -96,52 +99,30 @@
       </section>
 
 
+      
       <section class="panel hidden" id="panelSetup" aria-hidden="true">
-        <h2>Setup</h2>
+        <div class="panelHead">
+          <h2>Setup</h2>
+          <div class="panelHeadActions">
+            <button class="btn ghost" id="btnSetupBack">Zurück</button>
+          </div>
+        </div>
 
         <div class="grid2">
           <div class="card">
-            <h3>Durchgang</h3>
-            <label class="field">
-              <span>Karten pro Durchgang</span>
-              <input id="sessionSize" type="number" min="5" max="200" step="1" value="30" />
-            </label>
-
-            <label class="field">
-              <span>Modus</span>
-              <select id="mode">
-                <option value="exam">Prüfungsmodus (Antwort wählen)</option>
-                <option value="flash">Klassisch (Antwort erst zeigen)</option>
-              </select>
-            </label>
-
-            <label class="field row">
-              <input id="randomOrder" type="checkbox" checked />
-              <span>Fragen zufällig (keine Reihenfolge)</span>
-            </label>
-
-            <label class="field row">
-              <input id="mixSubjects" type="checkbox" checked />
-              <span>Sachgebiete mischen</span>
-            </label>
-
-            <div class="hint">
-              Tipp: Im Prüfungsmodus wählst du erst die Antwort, dann bewertest du (Again/Hard/Good/Easy).
-            </div>
-          </div>
-
-          <div class="card">
             <h3>Inhalte</h3>
+            <p class="muted">Wähle Sachgebiete aus, die in Lernkarten & Prüfung vorkommen sollen.</p>
             <div id="subjectList" class="chips"></div>
 
             <div class="divider"></div>
 
             <h4>Import</h4>
-            <p class="muted">CSV oder JSON importieren (lokal – bleibt auf deinem iPhone).</p>
             <div class="rowgap">
               <input type="file" id="fileImport" accept=".csv,.json" />
-              <button class="btn" id="btnImportSample">Sample laden</button>
-              <button class="btn danger" id="btnResetAll">Alles zurücksetzen</button>
+              <div class="inlineBtns">
+                <button class="btn" id="btnImportSample">Sample laden</button>
+                <button class="btn danger" id="btnResetAll">Alles zurücksetzen</button>
+              </div>
             </div>
 
             <details class="details">
@@ -151,12 +132,46 @@
               </div>
             </details>
           </div>
-        </div>
 
-        <div class="actions">
-          <button class="btn primary" id="btnStart">Durchgang starten</button>
+          <div class="card">
+            <h3>Training</h3>
+            <p class="muted">Diese Einstellungen gelten als Standard für deine Durchgänge.</p>
+
+            <label class="field">
+              <span>Tagesziel (Bewertungen pro Tag)</span>
+              <input id="dailyGoal" type="number" min="5" max="500" step="5" value="50" />
+            </label>
+
+            <label class="field">
+              <span>Karten pro Durchgang</span>
+              <input id="sessionSize" type="number" min="5" max="200" step="1" value="30" />
+            </label>
+
+            <label class="field">
+              <span>Standard-Modus</span>
+              <select id="mode">
+                <option value="exam">Prüfung (Antwort wählen)</option>
+                <option value="flash">Lernkarten (Antwort anzeigen)</option>
+              </select>
+            </label>
+
+            <label class="field row">
+              <input id="randomOrder" type="checkbox" checked />
+              <span>Fragen zufällig</span>
+            </label>
+
+            <label class="field row">
+              <input id="mixSubjects" type="checkbox" checked />
+              <span>Sachgebiete mischen</span>
+            </label>
+
+            <div class="hint">
+              Auf der Startseite kannst du jederzeit mit einem Tippen „Lernkarten“ oder „Prüfung“ starten.
+            </div>
+          </div>
         </div>
       </section>
+
 
       <section class="panel hidden" id="panelReview" aria-hidden="true">
         <div class="review-head">

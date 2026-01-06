@@ -250,3 +250,23 @@ pre{ margin:0; white-space:pre-wrap; color: #c7d2fe; font-size:12.5px; line-heig
 @media (max-width: 520px){
   .footerRow{ flex-direction:column; align-items:stretch; }
 }
+
+
+.panelHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom: 10px;
+}
+.panelHeadActions{ display:flex; gap:10px; }
+.inlineBtns{ display:flex; gap:10px; flex-wrap:wrap; }
+.inlineInfo{
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+  padding:10px 12px;
+  border-radius: 14px;
+  border:1px solid var(--line);
+  background: rgba(0,0,0,.12);
+}
