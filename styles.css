@@ -203,3 +203,30 @@ pre{ margin:0; white-space:pre-wrap; color: #c7d2fe; font-size:12.5px; line-heig
   background: rgba(15,23,42,.55);
   backdrop-filter: blur(10px);
 }
+
+/* Home page extras */
+.todayLine{
+  display:flex;
+  gap:12px;
+  align-items:stretch;
+  margin:10px 0 12px;
+}
+.todayKpi{
+  flex:1;
+  padding:12px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.04);
+  border-radius: 16px;
+}
+.todayKpi .k{ font-size:22px; font-weight:900; }
+.todayKpi .v{ font-size:12px; color: var(--muted); margin-top:2px; }
+
+.startActions{ justify-content:space-between; }
+.startActions .btn{ flex:1; }
+.startActions .btn + .btn{ margin-left:10px; }
+
+@media (max-width: 520px){
+  .todayLine{ flex-direction:column; }
+  .startActions{ flex-direction:column; }
+  .startActions .btn + .btn{ margin-left:0; margin-top:10px; }
+}

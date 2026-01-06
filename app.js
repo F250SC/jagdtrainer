@@ -1,7 +1,7 @@
 import { dbGetAll, dbPut, dbPutMany, dbGet, dbClear } from "./db.js";
 
 const $ = (id) => document.getElementById(id);
-const panels = { setup: $("panelSetup"), review: $("panelReview"), stats: $("panelStats") };
+const panels = { home: $("panelHome"), setup: $("panelSetup"), review: $("panelReview"), stats: $("panelStats") };
 
 function showPanel(name){
   for (const [k,el] of Object.entries(panels)){
@@ -59,30 +59,59 @@ async function loadAll(){
 }
 
 function renderSubjects(){
-  const wrap=$("subjectList"); wrap.innerHTML="";
-  const subjects=[...new Set(allCards.map(c=>c.subject))].sort();
-  if (!subjects.length){ wrap.innerHTML=`<span class="muted">Noch keine Karten. Importiere CSV/JSON oder lade Sample.</span>`; return; }
+  renderSubjectChips("subjectList");
+  renderSubjectChips("subjectListHome");
+}
+
+function renderSubjectChips(containerId){
+  const wrap = $(containerId);
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  const subjects = [...new Set(allCards.map(c=>c.subject))].sort();
+  if (!subjects.length){
+    wrap.innerHTML = `<span class="muted">Noch keine Karten. Importiere CSV/JSON oder lade Sample.</span>`;
+    return;
+  }
   for (const sub of subjects){
-    const on=!!settings.subjectsOn[sub];
-    const btn=document.createElement("button");
-    btn.className="chip "+(on?"on":"off");
-    btn.textContent=sub;
-    btn.onclick=async()=>{ settings.subjectsOn[sub]=!settings.subjectsOn[sub]; await dbPut("settings",{key:"main",value:settings}); renderSubjects(); };
+    const on = !!settings.subjectsOn[sub];
+    const btn = document.createElement("button");
+    btn.className = "chip " + (on ? "on":"off");
+    btn.textContent = sub;
+    btn.onclick = async () => {
+      settings.subjectsOn[sub] = !settings.subjectsOn[sub];
+      await dbPut("settings",{ key:"main", value: settings });
+      renderSubjects();
+      await renderHome();
+    };
     wrap.appendChild(btn);
   }
 }
 
 function writeSetupUI(){
-  $("sessionSize").value=settings.sessionSize;
-  $("mode").value=settings.mode;
-  $("randomOrder").checked=settings.randomOrder;
-  $("mixSubjects").checked=settings.mixSubjects;
+  $("sessionSize").value = settings.sessionSize;
+  $("mode").value = settings.mode;
+  $("randomOrder").checked = settings.randomOrder;
+  $("mixSubjects").checked = settings.mixSubjects;
+
+  // Home
+  if ($("homeSessionSize")) $("homeSessionSize").value = settings.sessionSize;
+  if ($("homeRandomOrder")) $("homeRandomOrder").checked = settings.randomOrder;
+  if ($("homeMixSubjects")) $("homeMixSubjects").checked = settings.mixSubjects;
+  if ($("dailyGoal")) $("dailyGoal").value = settings.dailyGoal || 50;
 }
 function readSetupUI(){
-  settings.sessionSize = clamp(parseInt($("sessionSize").value||"30",10),5,200);
+  settings.sessionSize = clamp(parseInt($("sessionSize").value || "30",10), 5, 200);
   settings.mode = $("mode").value;
   settings.randomOrder = $("randomOrder").checked;
   settings.mixSubjects = $("mixSubjects").checked;
+  if ($("dailyGoal")) settings.dailyGoal = clamp(parseInt($("dailyGoal").value || "50",10), 5, 500);
+}
+
+function readHomeUI(){
+  if ($("homeSessionSize")) settings.sessionSize = clamp(parseInt($("homeSessionSize").value || "30",10), 5, 200);
+  if ($("homeRandomOrder")) settings.randomOrder = $("homeRandomOrder").checked;
+  if ($("homeMixSubjects")) settings.mixSubjects = $("homeMixSubjects").checked;
+  if ($("dailyGoal")) settings.dailyGoal = clamp(parseInt($("dailyGoal").value || "50",10), 5, 500);
 }
 async function saveSetupUI(){ readSetupUI(); await dbPut("settings",{key:"main",value:settings}); }
 
@@ -232,6 +261,24 @@ async function startSession(){
   if (!session.queue.length){ alert("Keine Karten gefunden. Bitte importieren oder Sample laden."); return; }
   $("subtitle").textContent="Läuft…";
   showPanel("review"); updateProgress(); renderCard(session.queue[0]);
+}
+
+async function renderHome(){
+  const day = todayKey();
+  const s = (await dbGet("stats", day)) || { done:0, correct:0, wrong:0 };
+  const done = s.done || 0;
+  const correct = s.correct || 0;
+  const acc = done ? Math.round((correct/done)*100) : 0;
+
+  if ($("homeDone")) $("homeDone").textContent = done;
+  if ($("homeAcc")) $("homeAcc").textContent = `${acc}%`;
+
+  const goal = settings.dailyGoal || 50;
+  const reached = done >= goal;
+  if ($("homeGoalState")) $("homeGoalState").textContent = reached ? "✅" : "⏳";
+  const pct = goal ? Math.min(100, Math.round((done/goal)*100)) : 0;
+  if ($("homeGoalBar")) $("homeGoalBar").style.width = `${pct}%`;
+  if ($("homeGoalText")) $("homeGoalText").textContent = `${done} / ${goal}`;
 }
 
 async function renderStats(){
@@ -396,6 +443,13 @@ $("btnResetAll").onclick=resetAll;
 
 ["sessionSize","mode","randomOrder","mixSubjects"].forEach(id=>$(id).addEventListener("change", async()=>{ await saveSetupUI(); }));
 
+// Home autosave
+["homeSessionSize","homeRandomOrder","homeMixSubjects","dailyGoal"].forEach(id=>{
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener("change", async()=>{ await saveHomeUI(); await renderHome(); });
+});
+
 async function registerSW(){
   if (!("serviceWorker" in navigator)){ $("swState").textContent="Kein Service Worker"; return; }
   try{
@@ -410,6 +464,8 @@ async function registerSW(){
   writeSetupUI();
   renderSubjects();
   await renderStats();
+  await renderHome();
   await registerSW();
-  showPanel("setup");
+  showPanel("home");
+  $("subtitle").textContent = "Startseite";
 })();

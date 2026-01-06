@@ -20,13 +20,83 @@
         </div>
       </div>
       <div class="top-actions">
+        <button class="btn ghost" id="btnHome" title="Startseite">Home</button>
         <button class="btn ghost" id="btnStats" title="Statistiken">Stats</button>
         <button class="btn ghost" id="btnSettings" title="Einstellungen">Setup</button>
       </div>
     </header>
 
     <main class="content">
-      <section class="panel" id="panelSetup" aria-hidden="false">
+
+      <section class="panel" id="panelHome" aria-hidden="false">
+        <h2>Start</h2>
+
+        <div class="grid2">
+          <div class="card">
+            <h3>Heute</h3>
+            <div class="todayLine">
+              <div class="todayKpi">
+                <div class="k" id="homeDone">0</div>
+                <div class="v">bewertet</div>
+              </div>
+              <div class="todayKpi">
+                <div class="k" id="homeAcc">0%</div>
+                <div class="v">Trefferquote</div>
+              </div>
+              <div class="todayKpi">
+                <div class="k" id="homeGoalState">–</div>
+                <div class="v">Tagesziel</div>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>Tagesziel (Bewertungen)</span>
+              <input id="dailyGoal" type="number" min="5" max="500" step="5" value="50" />
+            </label>
+
+            <div class="bar">
+              <div class="barfill" id="homeGoalBar"></div>
+            </div>
+            <div class="tiny muted" id="homeGoalText">0 / 50</div>
+          </div>
+
+          <div class="card">
+            <h3>Durchgang</h3>
+
+            <label class="field">
+              <span>Karten pro Durchgang</span>
+              <input id="homeSessionSize" type="number" min="5" max="200" step="1" value="30" />
+            </label>
+
+            <label class="field row">
+              <input id="homeMixSubjects" type="checkbox" checked />
+              <span>Sachgebiete mischen</span>
+            </label>
+
+            <label class="field row">
+              <input id="homeRandomOrder" type="checkbox" checked />
+              <span>Fragen zufällig</span>
+            </label>
+
+            <div class="divider"></div>
+
+            <h4>Sachgebiete</h4>
+            <div id="subjectListHome" class="chips"></div>
+
+            <div class="actions startActions">
+              <button class="btn" id="btnStartLearn">Start Lernkarten</button>
+              <button class="btn primary" id="btnStartExam">Start Prüfung</button>
+            </div>
+
+            <div class="hint">
+              Lernkarten = Antwort erst anzeigen. Prüfung = Antwort wählen & prüfen.
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="panel hidden" id="panelSetup" aria-hidden="true">
         <h2>Setup</h2>
 
         <div class="grid2">
