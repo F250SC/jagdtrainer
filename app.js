@@ -97,192 +97,26 @@ function writeSetupUI(){
   if ($("homeSessionSize")) $("homeSessionSize").value = settings.sessionSize;
   if ($("homeRandomOrder")) $("homeRandomOrder").checked = settings.randomOrder;
   if ($("homeMixSubjects")) $("homeMixSubjects").checked = settings.mixSubjects;
-  if ($("dailyGoal")) $("dailyGoal").value = }
+  if ($("dailyGoal")) $("dailyGoal").value = settings.dailyGoal || 50;
+}
 function readSetupUI(){
   settings.sessionSize = clamp(parseInt($("sessionSize").value || "30",10), 5, 200);
   settings.mode = $("mode").value;
   settings.randomOrder = $("randomOrder").checked;
   settings.mixSubjects = $("mixSubjects").checked;
-  if ($("dailyGoal")) }
+  if ($("dailyGoal")) settings.dailyGoal = clamp(parseInt($("dailyGoal").value || "50",10), 5, 500);
+}
 
 function readHomeUI(){
   if ($("homeSessionSize")) settings.sessionSize = clamp(parseInt($("homeSessionSize").value || "30",10), 5, 200);
   if ($("homeRandomOrder")) settings.randomOrder = $("homeRandomOrder").checked;
   if ($("homeMixSubjects")) settings.mixSubjects = $("homeMixSubjects").checked;
+  if ($("dailyGoal")) settings.dailyGoal = clamp(parseInt($("dailyGoal").value || "50",10), 5, 500);
 }
+async function saveSetupUI(){ readSetupUI(); await dbPut("settings",{key:"main",value:settings}); }
 
-function setEq(a,b){
-  if (a.size !== b.size) return false;
-  for (const v of a){ if (!b.has(v)) return false; }
-  return true;
-}
+async function saveHomeUI(){ readHomeUI(); await dbPut("settings",{key:"main",value:settings}); writeSetupUI(); }
 
-let examSim = null;
-let examTick = null;
-
-function fmtMMSS(sec){
-  const m = Math.floor(sec/60);
-  const s = sec%60;
-  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-}
-
-async function startExamSimulation(){
-  await saveHomeUI();
-  // Build buckets for SG1..SG6
-  const buckets = { SG1:[], SG2:[], SG3:[], SG4:[], SG5:[], SG6:[] };
-  for (const c of allCards){
-    const k = subjectKey(c.subject);
-    if (buckets[k]) buckets[k].push(c);
-  }
-
-  // Ensure enough cards
-  for (const [k,need] of Object.entries(EXAM_SIM.perSG)){
-    if (buckets[k].length < need){
-      alert(`Nicht genug Karten in ${k}: benötigt ${need}, vorhanden ${buckets[k].length}.`);
-      return;
-    }
-  }
-
-  // Sample required number per SG
-  let queue = [];
-  for (const [k,need] of Object.entries(EXAM_SIM.perSG)){
-    const pick = shuffle([...buckets[k]]).slice(0, need);
-    queue.push(...pick);
-  }
-  queue = shuffle(queue);
-
-  // Create exam state
-  const start = Date.now();
-  const end = start + EXAM_SIM.timeMin*60*1000;
-  examSim = {
-    id: `exam_${start}`,
-    day: todayKey(),
-    ts: start,
-    endTs: end,
-    answers: new Map(), // cardId -> Set(keys)
-    idx: 0,
-    submitted: false
-  };
-
-  settings.mode = "exam_sim";
-  session.queue = queue;
-  session.idx = 0;
-  setReviewModeUI();
-  showPanel("review");
-  $("subtitle").textContent = "Prüfungssimulation (Bayern)";
-  renderExamMeta();
-
-  if (examTick) clearInterval(examTick);
-  examTick = setInterval(() => {
-    if (!examSim || examSim.submitted) return;
-    const left = Math.max(0, Math.floor((examSim.endTs - Date.now())/1000));
-    if (left <= 0){
-      submitExamSimulation(true);
-    } else {
-      renderExamMeta();
-    }
-  }, 1000);
-
-  renderCard(session.queue[0]);
-}
-
-function renderExamMeta(){
-  const meta = $("examMeta");
-  if (!meta) return;
-  meta.classList.toggle("hidden", !examSim || settings.mode!=="exam_sim");
-  if (!examSim) return;
-
-  const left = Math.max(0, Math.floor((examSim.endTs - Date.now())/1000));
-  if ($("examTimer")) $("examTimer").textContent = fmtMMSS(left);
-
-  const answered = [...examSim.answers.values()].filter(set => set && set.size>0).length;
-  if ($("examAnswered")) $("examAnswered").textContent = `${answered}/${EXAM_SIM.total}`;
-}
-
-function getPickedSet(cardId){
-  if (!examSim) return new Set();
-  return examSim.answers.get(cardId) || new Set();
-}
-
-function savePickedFromUI(card){
-  if (!examSim) return;
-  const checked = [...document.querySelectorAll('#optList input[type="checkbox"]:checked')].map(i=>i.value);
-  examSim.answers.set(card.id, new Set(checked));
-}
-
-function loadPickedToUI(card){
-  const set = getPickedSet(card.id);
-  const inputs = [...document.querySelectorAll('#optList input[type="checkbox"]')];
-  for (const i of inputs){
-    i.checked = set.has(i.value);
-  }
-}
-
-function gotoExamIdx(nextIdx){
-  if (!examSim) return;
-  // save current
-  const cur = session.queue[examSim.idx];
-  if (cur) savePickedFromUI(cur);
-
-  examSim.idx = clamp(nextIdx, 0, EXAM_SIM.total-1);
-  session.idx = examSim.idx;
-  renderCard(session.queue[examSim.idx]);
-  renderExamMeta();
-  updateProgress();
-}
-
-async function submitExamSimulation(auto=false){
-  if (!examSim || examSim.submitted) return;
-  // save current
-  const cur = session.queue[examSim.idx];
-  if (cur) savePickedFromUI(cur);
-
-  examSim.submitted = true;
-  renderExamMeta();
-  if (examTick) { clearInterval(examTick); examTick=null; }
-
-  let correct=0, wrong=0, unanswered=0;
-  for (const card of session.queue){
-    const picked = getPickedSet(card.id);
-    const corr = new Set(card.correct);
-    if (!picked || picked.size===0){
-      wrong++; unanswered++;
-      continue;
-    }
-    if (setEq(picked, corr)) correct++;
-    else wrong++;
-  }
-  const pass = wrong <= EXAM_SIM.maxWrong;
-
-  // Store run
-  await dbPut("examRuns", { id: examSim.id, day: examSim.day, ts: examSim.ts, correct, wrong, unanswered, pass });
-
-  // Show result in-place
-  $("optList").innerHTML = "";
-  $("btnCheck")?.classList.add("hidden");
-  $("resultLine").textContent = "";
-  $("examNav")?.classList.add("hidden");
-  $("rateRow")?.classList.add("hidden");
-
-  const box = $("answerBox");
-  box.classList.remove("hidden");
-  box.innerHTML = `
-    <div class="ansTitle">Prüfungssimulation beendet</div>
-    <div class="ansItem"><strong>${pass ? "✅ Bestanden" : "❌ Nicht bestanden"}</strong></div>
-    <div class="ansItem">Richtig: <strong>${correct}</strong> / ${EXAM_SIM.total}</div>
-    <div class="ansItem">Falsch (inkl. unbeantwortet): <strong>${wrong}</strong> (max. ${EXAM_SIM.maxWrong})</div>
-    <div class="ansItem">Unbeantwortet: <strong>${unanswered}</strong></div>
-    <div class="divider"></div>
-    <button class="btn" id="btnExamBackHome">Zurück zur Startseite</button>
-  `;
-  $("btnExamBackHome").onclick = async () => {
-    await renderHome();
-    showPanel("home");
-    $("subtitle").textContent = "Startseite";
-  };
-
-  await renderHome();
-}
 function eligibleCards(){
   const subjects = Object.entries(settings.subjectsOn).filter(([,on])=>on).map(([k])=>k);
   return allCards.filter(c=>subjects.includes(c.subject));
@@ -320,28 +154,15 @@ function pickSessionQueue(){
 }
 
 function setReviewModeUI(){
-  const isTrainExam = settings.mode==="exam";
-  const isSim = settings.mode==="exam_sim";
-
-  $("examArea").classList.toggle("hidden", !(isTrainExam || isSim));
+  $("examArea").classList.toggle("hidden", settings.mode!=="exam");
   $("flashArea").classList.toggle("hidden", settings.mode!=="flash");
-
-  // Training exam uses check + rating; sim uses nav + submit, no rating during run
-  $("btnCheck").classList.toggle("hidden", !isTrainExam);
-  $("resultLine").textContent = "";
-  $("examNav").classList.toggle("hidden", !isSim);
-
   $("rateRow").classList.add("hidden");
+  $("resultLine").textContent="";
   $("answerBox").classList.add("hidden");
-
-  // Exam meta header
-  const meta = $("examMeta");
-  if (meta) meta.classList.toggle("hidden", !(isSim && !!examSim && !examSim.submitted));
 }
 
 function updateProgress(){
-  const total=session.queue.length;
-  const done = (examSim && settings.mode==="exam_sim") ? (examSim.idx+1) : session.idx;
+  const total=session.queue.length, done=session.idx;
   $("progressText").textContent=`${done} / ${total}`;
   $("barFill").style.width = total ? `${Math.round((done/total)*100)}%` : "0%";
 }
@@ -354,43 +175,20 @@ function renderCard(card){
   setReviewModeUI();
 
   if (settings.mode==="exam"){
-    // Trainings-Prüfungsmodus (mit Bewertung)
     const list=$("optList"); list.innerHTML="";
     for (const opt of card.options){
       const label=document.createElement("label");
       label.className="opt";
-      label.innerHTML = `<input type="checkbox" value="${opt.k}"><div><strong>${opt.k})</strong> ${opt.t}</div>`;
-      label.addEventListener("click", (ev)=>{
-        const input=label.querySelector("input");
-        if (ev.target !== input) input.checked = !input.checked;
-        const picked=[...document.querySelectorAll('#optList input[type="checkbox"]:checked')].map(i=>i.value);
-        session.picked = picked;
-      });
+      label.innerHTML = `<input type="radio" name="opt" value="${opt.k}"><div><strong>${opt.k})</strong> ${opt.t}</div>`;
+      label.addEventListener("click", ()=>{ const input=label.querySelector("input"); input.checked=true; session.picked=input.value; });
       list.appendChild(label);
     }
+    $("btnCheck").disabled=false;
+    $("resultLine").textContent="Wähle eine Antwort und prüfe.";
+  } else {
+    $("btnReveal").disabled=false;
+    $("answerBox").innerHTML="";
   }
-
-  if (settings.mode==="exam_sim"){
-    // Originalprüfung: Antworten speichern, navigieren, später abgeben
-    const list=$("optList"); list.innerHTML="";
-    for (const opt of card.options){
-      const label=document.createElement("label");
-      label.className="opt";
-      label.innerHTML = `<input type="checkbox" value="${opt.k}"><div><strong>${opt.k})</strong> ${opt.t}</div>`;
-      label.addEventListener("click", (ev)=>{
-        const input=label.querySelector("input");
-        if (ev.target !== input) input.checked = !input.checked;
-        // keep current selection in UI only; saved on navigation/submit
-      });
-      list.appendChild(label);
-    }
-    // restore saved selection
-    setTimeout(()=>loadPickedToUI(card), 0);
-    updateProgress();
-    renderExamMeta();
-  }
-
-  updateProgress();
 }
 
 function revealFlash(card){
@@ -403,22 +201,19 @@ function revealFlash(card){
 }
 
 function checkExam(card){
-  const picked = session.picked || [];
-  if (!picked.length) return;
+  if (!session.picked) return;
   session.checked=true;
   const correctSet=new Set(card.correct);
-  const pickedSet=new Set(picked);
-
   const els=[...document.querySelectorAll("#optList .opt")];
   for (const el of els){
     const v=el.querySelector("input").value;
     el.classList.remove("correct","wrong");
     if (correctSet.has(v)) el.classList.add("correct");
-    if (pickedSet.has(v) && !correctSet.has(v)) el.classList.add("wrong");
+    if (session.picked===v && !correctSet.has(v)) el.classList.add("wrong");
   }
-  const ok=setEq(pickedSet, correctSet);
+  const ok=correctSet.has(session.picked);
   session.wasCorrect=ok;
-  $("resultLine").textContent = ok ? "✅ Richtig. Jetzt bewerten (Hard/Good/Easy)." : "❌ Falsch/Unvollständig. Für den Lernplan: Again.";
+  $("resultLine").textContent = ok ? "✅ Richtig. Jetzt bewerten (Hard/Good/Easy)." : "❌ Falsch. Für den Lernplan: Again.";
   $("rateRow").classList.remove("hidden");
   if (!ok) document.querySelector('[data-rate="again"]')?.focus();
 }
@@ -461,18 +256,39 @@ async function rateCurrent(rate){
   renderCard(session.queue[session.idx]);
 }
 
-async function startSession(){
-  await saveSetupUI();
-  if (!Object.entries(settings.subjectsOn).some(([,v])=>v)){ alert("Bitte mindestens ein Sachgebiet aktivieren."); return; }
-  session.queue=pickSessionQueue(); session.idx=0;
-  if (!session.queue.length){ alert("Keine Karten gefunden. Bitte importieren oder Sample laden."); return; }
-  $("subtitle").textContent="Läuft…";
-  showPanel("review"); updateProgress(); renderCard(session.queue[0]);
+async function startSession(forcedMode){
+  // Start from Home or Setup. Home can force mode (flash/exam).
+  if (forcedMode) settings.mode = forcedMode;
+
+  const homeVisible = panels.home && !panels.home.classList.contains("hidden");
+  if (homeVisible){
+    await saveHomeUI();
+  } else {
+    await saveSetupUI();
+  }
+
+  if (!Object.entries(settings.subjectsOn).some(([,v])=>v)){
+    alert("Bitte mindestens ein Sachgebiet aktivieren.");
+    return;
+  }
+
+  session.queue = pickSessionQueue();
+  session.idx = 0;
+
+  if (!session.queue.length){
+    alert("Keine Karten gefunden. Bitte importieren oder Sample laden.");
+    return;
+  }
+
+  $("subtitle").textContent = (settings.mode === "exam") ? "Prüfung läuft…" : "Lernkarten laufen…";
+  showPanel("review");
+  updateProgress();
+  renderCard(session.queue[0]);
 }
 
 async function renderHome(){
   const day = todayKey();
-  const s = (await dbGet("stats", day)) || { day, done:0, correct:0, wrong:0 };
+  const s = (await dbGet("stats", day)) || { done:0, correct:0, wrong:0 };
   const done = s.done || 0;
   const correct = s.correct || 0;
   const acc = done ? Math.round((correct/done)*100) : 0;
@@ -480,42 +296,12 @@ async function renderHome(){
   if ($("homeDone")) $("homeDone").textContent = done;
   if ($("homeAcc")) $("homeAcc").textContent = `${acc}%`;
 
-  // Daily goal (set in Setup)
   const goal = settings.dailyGoal || 50;
   const reached = done >= goal;
   if ($("homeGoalState")) $("homeGoalState").textContent = reached ? "✅" : "⏳";
-
   const pct = goal ? Math.min(100, Math.round((done/goal)*100)) : 0;
   if ($("homeGoalBar")) $("homeGoalBar").style.width = `${pct}%`;
   if ($("homeGoalText")) $("homeGoalText").textContent = `${done} / ${goal}`;
-
-  // 7-day average accuracy
-  const all = await dbGetAll("stats");
-  const last7 = [];
-  for (let i=0;i<7;i++){
-    const d = new Date();
-    d.setDate(d.getDate()-i);
-    const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    const row = all.find(x=>x.day===k);
-    if (row && row.done>0){
-      last7.push(Math.round((row.correct/row.done)*100));
-    }
-  }
-  const avg7 = last7.length ? Math.round(last7.reduce((a,b)=>a+b,0)/last7.length) : 0;
-  if ($("homeAcc7")) $("homeAcc7").textContent = last7.length ? `${avg7}%` : "–";
-
-  // Exam sim status (today)
-  const runs = await dbGetAll("examRuns");
-  const todayRuns = runs.filter(r=>r.day===day).sort((a,b)=>b.ts-a.ts);
-  if ($("homeExamState")){
-    if (!todayRuns.length){
-      $("homeExamState").textContent = "Noch nicht absolviert";
-    } else {
-      const r = todayRuns[0];
-      const status = r.pass ? "✅ Bestanden" : "❌ Nicht bestanden";
-      $("homeExamState").textContent = `${status} · ${r.correct}/100 richtig · ${r.unanswered} unbeantwortet`;
-    }
-  }
 }
 
 async function renderStats(){
@@ -634,27 +420,20 @@ async function loadSample(){
 async function resetAll(){
   if (!confirm("Wirklich alles löschen? Karten, Lernstand, Stats.")) return;
   await dbClear("cards"); await dbClear("state"); await dbClear("stats");
-  try{ await dbClear("examRuns"); }catch{}
   settings.subjectsOn={}; await dbPut("settings",{key:"main",value:settings});
   await loadAll(); renderSubjects(); writeSetupUI();
   alert("Zurückgesetzt.");
 }
 
 // Wire UI
-$("btnStart").onclick=startSession;
-$("btnBackToSetup").onclick = async () => { 
-  // stop exam timer if running
-  if (examTick) { clearInterval(examTick); examTick=null; }
-  examSim = null;
-  await saveSetupUI();
-  await renderHome();
-  showPanel("home");
-  $("subtitle").textContent = "Startseite";
-};
-$("btnHome").onclick = async () => { await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
-$("btnSettings").onclick=async()=>{ await saveSetupUI(); showPanel("setup"); };
-$("btnStats").onclick=async()=>{ await renderStats(); showPanel("stats"); };
-$("btnStatsBack").onclick=async()=>{ showPanel("setup"); };
+$("btnStart").onclick = () => startSession();
+$("btnStartLearn").onclick = () => startSession("flash");
+$("btnStartExam").onclick = () => startSession("exam");
+$("btnBackToSetup").onclick = async () => { await saveSetupUI(); await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
+$("btnSettings").onclick = async () => { await saveSetupUI(); showPanel("setup"); $("subtitle").textContent = "Setup"; };
+$("btnHome").onclick = async () => { await saveHomeUI(); await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
+$("btnStats").onclick = async () => { await renderStats(); await renderHome(); showPanel("stats"); $("subtitle").textContent = "Statistiken"; };
+$("btnStatsBack").onclick = async () => { await renderHome(); showPanel("home"); $("subtitle").textContent = "Startseite"; };
 
 $("btnReveal").onclick=()=>revealFlash(session.current);
 $("btnCheck").onclick=()=>checkExam(session.current);
@@ -691,29 +470,24 @@ $("btnResetAll").onclick=resetAll;
 ["sessionSize","mode","randomOrder","mixSubjects"].forEach(id=>$(id).addEventListener("change", async()=>{ await saveSetupUI(); }));
 
 // Home autosave
-["homeSessionSize","homeRandomOrder","homeMixSubjects"].forEach(id=>{
+["homeSessionSize","homeRandomOrder","homeMixSubjects","dailyGoal"].forEach(id=>{
   const el = $(id);
   if (!el) return;
   el.addEventListener("change", async()=>{ await saveHomeUI(); await renderHome(); });
 });
 
-
-// Exam simulation controls
-$("btnExamPrev").onclick = () => gotoExamIdx((examSim?.idx ?? 0) - 1);
-$("btnExamNext").onclick = () => gotoExamIdx((examSim?.idx ?? 0) + 1);
-$("btnExamSubmit").onclick = () => submitExamSimulation(false);
-
 async function registerSW(){
   const swState = $("swState");
-  const btn = $("btnUpdate");
+  const btnUpdate = $("btnUpdate");
 
   if (!("serviceWorker" in navigator)){
     if (swState) swState.textContent = "Kein Service Worker";
-    if (btn) btn.classList.add("hidden");
     return;
   }
 
   let refreshing = false;
+
+  // When controller changes, reload once so the new SW takes over.
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
     refreshing = true;
@@ -724,52 +498,42 @@ async function registerSW(){
     const reg = await navigator.serviceWorker.register("./sw.js");
     if (swState) swState.textContent = "Offline bereit";
 
-    // Default button state: check updates
-    if (btn){
-      btn.textContent = "Auf Update prüfen";
-      btn.onclick = async () => {
-        btn.disabled = true;
-        if (swState) swState.textContent = "Prüfe…";
-        try{ await reg.update(); } catch {}
-        // If an update is waiting now, offer install
-        if (reg.waiting){
-          if (swState) swState.textContent = "Update verfügbar";
-          btn.textContent = "Update installieren";
-          btn.disabled = false;
-          btn.onclick = async () => {
-            btn.disabled = true;
-            if (swState) swState.textContent = "Installiere Update…";
-            reg.waiting?.postMessage({ type:"SKIP_WAITING" });
-          };
-        } else {
-          if (swState) swState.textContent = "Aktuell";
-          btn.disabled = false;
-          btn.textContent = "Auf Update prüfen";
-        }
-      };
+    // If there's already a waiting worker (e.g., after background update), show button
+    if (reg.waiting && btnUpdate){
+      btnUpdate.classList.remove("hidden");
+      if (swState) swState.textContent = "Update verfügbar";
     }
 
-    // Background update found
     reg.addEventListener("updatefound", () => {
-      const nw = reg.installing;
-      if (!nw) return;
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+
       if (swState) swState.textContent = "Update wird geladen…";
-      nw.addEventListener("statechange", () => {
-        if (nw.state === "installed" && navigator.serviceWorker.controller){
+
+      newWorker.addEventListener("statechange", () => {
+        // When installed and there's an existing controller, it's an update
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller){
           if (swState) swState.textContent = "Update verfügbar";
-          if (btn){
-            btn.disabled = false;
-            btn.textContent = "Update installieren";
-            btn.onclick = async () => {
-              btn.disabled = true;
-              if (swState) swState.textContent = "Installiere Update…";
-              reg.waiting?.postMessage({ type:"SKIP_WAITING" });
-            };
-          }
+          if (btnUpdate) btnUpdate.classList.remove("hidden");
         }
       });
     });
 
+    if (btnUpdate){
+      btnUpdate.addEventListener("click", async () => {
+        const waiting = reg.waiting;
+        if (!waiting){
+          // If no waiting SW, force an update check and try again
+          try{ await reg.update(); } catch {}
+          if (swState) swState.textContent = "Kein Update gefunden";
+          btnUpdate.classList.add("hidden");
+          return;
+        }
+        if (swState) swState.textContent = "Installiere Update…";
+        waiting.postMessage({ type: "SKIP_WAITING" });
+        // controllerchange will reload the app
+      });
+    }
   } catch(e){
     console.warn(e);
     if (swState) swState.textContent = "SW Fehler";
