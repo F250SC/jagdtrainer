@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <title>Jagdtrainer Bayern</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">J</div>
+        <div class="titles">
+          <div class="title">Jagdtrainer Bayern</div>
+          <div class="subtitle" id="subtitle">Lernkarten · Prüfungsnah · Offline</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn ghost" id="btnStats" title="Statistiken">Stats</button>
+        <button class="btn ghost" id="btnSettings" title="Einstellungen">Setup</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="panel" id="panelSetup" aria-hidden="false">
+        <h2>Setup</h2>
+
+        <div class="grid2">
+          <div class="card">
+            <h3>Durchgang</h3>
+            <label class="field">
+              <span>Karten pro Durchgang</span>
+              <input id="sessionSize" type="number" min="5" max="200" step="1" value="30" />
+            </label>
+
+            <label class="field">
+              <span>Modus</span>
+              <select id="mode">
+                <option value="exam">Prüfungsmodus (Antwort wählen)</option>
+                <option value="flash">Klassisch (Antwort erst zeigen)</option>
+              </select>
+            </label>
+
+            <label class="field row">
+              <input id="randomOrder" type="checkbox" checked />
+              <span>Fragen zufällig (keine Reihenfolge)</span>
+            </label>
+
+            <label class="field row">
+              <input id="mixSubjects" type="checkbox" checked />
+              <span>Sachgebiete mischen</span>
+            </label>
+
+            <div class="hint">
+              Tipp: Im Prüfungsmodus wählst du erst die Antwort, dann bewertest du (Again/Hard/Good/Easy).
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Inhalte</h3>
+            <div id="subjectList" class="chips"></div>
+
+            <div class="divider"></div>
+
+            <h4>Import</h4>
+            <p class="muted">CSV oder JSON importieren (lokal – bleibt auf deinem iPhone).</p>
+            <div class="rowgap">
+              <input type="file" id="fileImport" accept=".csv,.json" />
+              <button class="btn" id="btnImportSample">Sample laden</button>
+              <button class="btn danger" id="btnResetAll">Alles zurücksetzen</button>
+            </div>
+
+            <details class="details">
+              <summary>CSV/JSON Format anzeigen</summary>
+              <div class="codeblock">
+                <pre id="formatHelp"></pre>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" id="btnStart">Durchgang starten</button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="panelReview" aria-hidden="true">
+        <div class="review-head">
+          <div class="progress">
+            <div class="muted" id="progressText">0 / 0</div>
+            <div class="bar"><div class="barfill" id="barFill"></div></div>
+          </div>
+          <div class="review-actions">
+            <button class="btn ghost" id="btnBackToSetup">Setup</button>
+          </div>
+        </div>
+
+        <article class="card big" id="cardArea">
+          <div class="qmeta">
+            <span class="pill" id="pillSubject">SG?</span>
+            <span class="muted" id="pillCardId">#</span>
+          </div>
+
+          <div class="question" id="qText">Frage…</div>
+
+          <div id="examArea" class="examArea hidden">
+            <div id="optList" class="optList"></div>
+            <button class="btn" id="btnCheck">Antwort prüfen</button>
+            <div class="resultLine" id="resultLine"></div>
+          </div>
+
+          <div id="flashArea" class="flashArea hidden">
+            <button class="btn" id="btnReveal">Antwort anzeigen</button>
+            <div class="answerBox hidden" id="answerBox"></div>
+          </div>
+
+          <div class="rateRow hidden" id="rateRow">
+            <button class="btn rate" data-rate="again">1 Again</button>
+            <button class="btn rate" data-rate="hard">2 Hard</button>
+            <button class="btn rate" data-rate="good">3 Good</button>
+            <button class="btn rate" data-rate="easy">4 Easy</button>
+          </div>
+
+          <div class="tiny muted" id="kbdHelp">Tastatur: 1–4 bewerten · Enter: prüfen/zeigen</div>
+        </article>
+      </section>
+
+      <section class="panel hidden" id="panelStats" aria-hidden="true">
+        <h2>Statistiken</h2>
+
+        <div class="grid2">
+          <div class="card">
+            <h3>Heute</h3>
+            <div class="statgrid">
+              <div class="stat"><div class="k" id="sTodayDone">0</div><div class="v">bewertet</div></div>
+              <div class="stat"><div class="k" id="sTodayCorrect">0</div><div class="v">richtig</div></div>
+              <div class="stat"><div class="k" id="sTodayWrong">0</div><div class="v">falsch</div></div>
+              <div class="stat"><div class="k" id="sTodayAcc">0%</div><div class="v">Trefferquote</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Bewertungen</h3>
+            <div class="statgrid">
+              <div class="stat"><div class="k" id="sAgain">0</div><div class="v">Again</div></div>
+              <div class="stat"><div class="k" id="sHard">0</div><div class="v">Hard</div></div>
+              <div class="stat"><div class="k" id="sGood">0</div><div class="v">Good</div></div>
+              <div class="stat"><div class="k" id="sEasy">0</div><div class="v">Easy</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Deck-Übersicht</h3>
+          <div class="statgrid">
+            <div class="stat"><div class="k" id="sTotalCards">0</div><div class="v">Karten</div></div>
+            <div class="stat"><div class="k" id="sLearned">0</div><div class="v">im Lernplan</div></div>
+            <div class="stat"><div class="k" id="sDue">0</div><div class="v">heute fällig</div></div>
+            <div class="stat"><div class="k" id="sNew">0</div><div class="v">neu</div></div>
+          </div>
+          <p class="muted">Hinweis: “neu” = noch nie bewertet. “im Lernplan” = hat einen SRS-Status.</p>
+        </div>
+
+        <div class="actions">
+          <button class="btn" id="btnStatsBack">Zurück</button>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="footer">
+      <span class="muted">Offline-PWA · Daten bleiben lokal · <span id="swState">Cache…</span></span>
+    </footer>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
