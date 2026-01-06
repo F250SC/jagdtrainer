@@ -479,117 +479,62 @@ $("btnResetAll").onclick=resetAll;
 async function registerSW(){
   const swState = $("swState");
   const btnUpdate = $("btnUpdate");
-
   const setState = (t) => { if (swState) swState.textContent = t; };
 
-  if (!btnUpdate){
-    // no UI, but still register
-    try{ await navigator.serviceWorker.register("./sw.js"); } catch {}
-    return;
-  }
-
-  btnUpdate.textContent = "Auf Update prüfen";
-  btnUpdate.disabled = false;
-  btnUpdate.dataset.mode = "check";
-
-  if (!("serviceWorker" in navigator)){
-    setState("Kein Service Worker");
-    btnUpdate.disabled = true;
-    return;
-  }
-
-  let reg;
-  try{
-    reg = await navigator.serviceWorker.register("./sw.js");
-    setState("Offline bereit");
-  } catch (e){
-    console.warn(e);
-    setState("SW Fehler");
-    btnUpdate.disabled = true;
-    return;
-  }
-
-  // If controller changes after SKIP_WAITING, reload once.
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (refreshing) return;
-    refreshing = true;
-    location.reload();
-  });
-
-  async function refreshCache(){
-    btnUpdate.disabled = true;
-    setState("Prüfe & aktualisiere…");
-
-    // 1) Ask SW to refresh its cache (works even when sw.js didn't change)
-    const controller = navigator.serviceWorker.controller;
-    if (!controller){
-      // first install; just reload
-      setState("Lade neu…");
-      location.reload();
-      return;
+  // Update button: ALWAYS works (hard refresh)
+  async function hardRefresh(){
+    if (btnUpdate){
+      btnUpdate.disabled = true;
+      btnUpdate.textContent = "Aktualisiere…";
     }
+    setState("Update wird installiert…");
 
-    const ts = Date.now();
-    const channel = new MessageChannel();
-    const result = await new Promise((resolve) => {
-      const timeout = setTimeout(() => resolve({ ok:false, detail:"Timeout" }), 7000);
-      channel.port1.onmessage = (ev) => {
-        clearTimeout(timeout);
-        resolve(ev.data || { ok:true });
-      };
-      controller.postMessage({ type:"REFRESH_CACHE", ts }, [channel.port2]);
-    });
+    try{
+      // 1) Unregister SW (kills stale caches in iOS PWA containers)
+      if ("serviceWorker" in navigator){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
 
-    if (result.ok){
-      setState("Update installiert");
-      // Hard reload to pick up new cached assets
-      setTimeout(() => location.reload(), 350);
-    } else {
+      // 2) Clear all caches
+      if ("caches" in window){
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+
+      // 3) Force a fresh reload bypassing URL caches
+      const u = new URL(location.href);
+      u.searchParams.set("reload", String(Date.now()));
+      location.replace(u.toString());
+    } catch(e){
+      console.warn(e);
       setState("Update Check fehlgeschlagen");
-      btnUpdate.disabled = false;
-      btnUpdate.textContent = "Auf Update prüfen";
-      console.warn("REFRESH_CACHE failed:", result.detail);
-    }
-  }
-
-  async function checkForWaitingSW(){
-    // Optional: if a new SW is waiting, let user install it
-    try{ await reg.update(); } catch {}
-    if (reg.waiting){
-      setState("Update verfügbar");
-      btnUpdate.textContent = "Update installieren";
-      btnUpdate.dataset.mode = "install";
-    }
-  }
-
-  async function installWaitingSW(){
-    const w = reg.waiting;
-    if (!w){
-      // fallback to cache refresh
-      await refreshCache();
-      return;
-    }
-    btnUpdate.disabled = true;
-    setState("Installiere Update…");
-    w.postMessage({ type:"SKIP_WAITING" });
-    // controllerchange will reload; safety reload if iOS misses it
-    setTimeout(() => location.reload(), 1500);
-  }
-
-  // On click: do a robust update (cache refresh), and if there is a waiting SW, allow install.
-  btnUpdate.addEventListener("click", async () => {
-    const mode = btnUpdate.dataset.mode || "check";
-    if (mode === "install"){
-      await installWaitingSW();
-    } else {
-      // check waiting SW first; then refresh cache (which is the reliable part)
-      await checkForWaitingSW();
-      if ((btnUpdate.dataset.mode || "check") !== "install"){
-        await refreshCache();
+      if (btnUpdate){
+        btnUpdate.disabled = false;
+        btnUpdate.textContent = "Auf Update prüfen";
       }
     }
-  });
+  }
+
+  if (btnUpdate){
+    btnUpdate.disabled = false;
+    btnUpdate.textContent = "Auf Update prüfen";
+    btnUpdate.onclick = hardRefresh;
+  }
+
+  // Normal SW registration (for offline)
+  if (!("serviceWorker" in navigator)){
+    setState("Kein Service Worker");
+    return;
+  }
+
+  try{
+    await navigator.serviceWorker.register("./sw.js");
+    setState("Offline bereit");
+  } catch(e){
+    console.warn(e);
+    setState("SW Fehler");
+  }
 }
 
 (async function init(){
