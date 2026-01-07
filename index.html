@@ -245,12 +245,12 @@
     <footer class="footer">
       <div class="footerRow">
         <span class="muted">Offline-PWA · Daten bleiben lokal · <span id="swState">Cache…</span></span>
-        <button class="btn small" id="btnUpdate">Auf Update prüfen</button>
+        <button class="btn small hidden" id="btnUpdate">Auf Update prüfen</button>
       </div>
     </footer>
   </div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=1767717403"></script>
 
 <script>
 (function(){
@@ -286,6 +286,29 @@
         await Promise.all(keys.map(k => caches.delete(k)));
       }
     } catch(_e){}
+  }
+
+  const btn = document.getElementById("btnUpdate");
+  if(btn){
+    btn.textContent = "Notfall-Update (Cache leeren)";
+    btn.onclick = async function(){
+      btn.disabled = true;
+      btn.textContent = "Leere Cache…";
+      await nukeSWAndCaches();
+      const u = new URL(location.href);
+      u.searchParams.set("nosw","1");
+      u.searchParams.set("reload", String(Date.now()));
+      location.replace(u.toString());
+    };
+  }
+
+  // If URL has nosw=1, we keep SW disabled on this run
+  const params = new URLSearchParams(location.search);
+  if(params.get("nosw")==="1"){
+    // mark for app.js to read
+    window.__NOSW__ = true;
+    // show small hint once
+    console.log("NOSW mode active");
   }
 })();
 </script>

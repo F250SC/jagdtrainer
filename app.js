@@ -1,4 +1,5 @@
 import { dbGetAll, dbPut, dbPutMany, dbGet, dbClear } from "./db.js";
+import { SG2_CARDS } from "./cards_sg2.js";
 
 const $ = (id) => document.getElementById(id);
 const panels = { home: $("panelHome"), setup: $("panelSetup"), review: $("panelReview"), stats: $("panelStats") };
@@ -480,33 +481,25 @@ async function registerSW(){
   const swState = $("swState");
   const btnUpdate = $("btnUpdate");
 
-  if (!("serviceWorker" in navigator)){
-    if (swState) swState.textContent = "Kein Service Worker";
-    if (btnUpdate) btnUpdate.disabled = true;
+  // We always show a "check update" button in the footer (except in NOSW mode)
+  if (btnUpdate){
+    btnUpdate.classList.remove("hidden");
+    btnUpdate.textContent = "Auf Update prüfen";
+  }
+
+  if (window.__NOSW__){
+    if (swState) swState.textContent = "SW deaktiviert (Notfallmodus)";
+    if (btnUpdate) btnUpdate.classList.add("hidden");
     return;
   }
 
-  let reg;
-  let waitingWorker = null;
-  let refreshing = false;
-
-  function setBtn(mode){
-    if (!btnUpdate) return;
-    btnUpdate.disabled = false;
-    if (mode === "check"){
-      btnUpdate.textContent = "Auf Update prüfen";
-      btnUpdate.dataset.mode = "check";
-    } else if (mode === "install"){
-      btnUpdate.textContent = "Update installieren";
-      btnUpdate.dataset.mode = "install";
-    } else if (mode === "busy"){
-      btnUpdate.textContent = "Bitte warten…";
-      btnUpdate.dataset.mode = "busy";
-      btnUpdate.disabled = true;
-    }
+  if (!("serviceWorker" in navigator)){
+    if (swState) swState.textContent = "Kein Service Worker";
+    if (btnUpdate) btnUpdate.classList.add("hidden");
+    return;
   }
 
-  // Reload once when the new SW takes control.
+  let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
     refreshing = true;
@@ -514,94 +507,83 @@ async function registerSW(){
   });
 
   try{
-    reg = await navigator.serviceWorker.register("./sw.js");
+    const reg = await navigator.serviceWorker.register("./sw.js");
     if (swState) swState.textContent = "Offline bereit";
-    setBtn("check");
 
-    // If there's already a waiting worker, offer install immediately.
-    if (reg.waiting){
-      waitingWorker = reg.waiting;
+    const setUpdateAvailable = () => {
+      if (btnUpdate){
+        btnUpdate.classList.remove("hidden");
+        btnUpdate.textContent = "Update installieren";
+      }
       if (swState) swState.textContent = "Update verfügbar";
-      setBtn("install");
-    }
+    };
 
-    function hookWorker(worker){
-      if (!worker) return;
-      worker.addEventListener("statechange", () => {
-        // When installed and there's an existing controller, it's an update ready.
-        if (worker.state === "installed" && navigator.serviceWorker.controller){
-          waitingWorker = reg.waiting || worker;
-          if (swState) swState.textContent = "Update verfügbar";
-          setBtn("install");
-        }
-      });
-    }
+    // If there's already a waiting worker, show install button
+    if (reg.waiting) setUpdateAvailable();
 
+    // Detect new SW installing
     reg.addEventListener("updatefound", () => {
       const nw = reg.installing;
+      if (!nw) return;
       if (swState) swState.textContent = "Update wird geladen…";
-      hookWorker(nw);
+      nw.addEventListener("statechange", () => {
+        if (nw.state === "installed"){
+          if (navigator.serviceWorker.controller){
+            setUpdateAvailable();
+          } else {
+            if (swState) swState.textContent = "Offline bereit";
+          }
+        }
+      });
     });
 
-    async function checkForUpdate(){
-      setBtn("busy");
-      if (swState) swState.textContent = "Prüfe Updates…";
-
-      try{
-        await reg.update();
-      } catch(e){
-        // iOS can throw sporadically; we still fall back to current state
-      }
-
-      // Give iOS a short moment to populate installing/waiting
-      await new Promise(r => setTimeout(r, 250));
-
-      if (reg.waiting){
-        waitingWorker = reg.waiting;
-        if (swState) swState.textContent = "Update verfügbar";
-        setBtn("install");
-        return true;
-      }
-
-      if (swState) swState.textContent = "Kein Update gefunden";
-      setBtn("check");
-      return false;
-    }
-
-    async function installUpdate(){
-      if (!waitingWorker && reg.waiting) waitingWorker = reg.waiting;
-      if (!waitingWorker){
-        // Try one more update check
-        const ok = await checkForUpdate();
-        if (!ok) return;
-      }
-
-      setBtn("busy");
-      if (swState) swState.textContent = "Installiere Update…";
-      try{
-        waitingWorker.postMessage({ type: "SKIP_WAITING" });
-      } catch(e){
-        // fallback: just reload, sometimes iOS activates on reload
-        location.reload();
-      }
-      // controllerchange will reload when activated
-    }
-
+    // Button behavior: if update is waiting -> install; else -> check for update
     if (btnUpdate){
       btnUpdate.addEventListener("click", async () => {
-        const mode = btnUpdate.dataset.mode || "check";
-        if (mode === "install") await installUpdate();
-        else await checkForUpdate();
+        if (reg.waiting){
+          if (swState) swState.textContent = "Installiere Update…";
+          reg.waiting.postMessage({ type: "SKIP_WAITING" });
+          return;
+        }
+        // force update check
+        if (swState) swState.textContent = "Prüfe Updates…";
+        btnUpdate.textContent = "Prüfe…";
+        try{ await reg.update(); } catch {}
+        // give the browser a moment to finish installing
+        await new Promise(r => setTimeout(r, 900));
+        if (reg.waiting){
+          setUpdateAvailable();
+        } else {
+          if (swState) swState.textContent = "Kein Update gefunden";
+          btnUpdate.textContent = "Auf Update prüfen";
+        }
       });
     }
   } catch(e){
     console.warn(e);
     if (swState) swState.textContent = "SW Fehler";
-    if (btnUpdate) btnUpdate.disabled = true;
+  }
+}
+
+async function seedBuiltinCards(){
+  try{
+    const existing = await dbGetAll("cards");
+    const have = new Set(existing.map(c=>c.id));
+    const add=[];
+    for (const raw of SG2_CARDS){
+      const c = normalizeCard(raw);
+      if (!have.has(c.id)) add.push(c);
+    }
+    if (add.length){
+      await dbPutMany("cards", add);
+    }
+  } catch(e){
+    console.warn("seedBuiltinCards failed", e);
   }
 }
 
 (async function init(){
+  await seedBuiltinCards();
   await loadAll();
   writeSetupUI();
   renderSubjects();
