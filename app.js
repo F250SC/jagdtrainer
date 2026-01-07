@@ -477,23 +477,31 @@ $("btnResetAll").onclick=resetAll;
 });
 
 async function registerSW(){
-  if (window.__NOSW__){
-    const swState = $("swState");
-    if (swState) swState.textContent = "SW deaktiviert (Notfallmodus)";
-    return;
-  }
-
   const swState = $("swState");
   const btnUpdate = $("btnUpdate");
 
-  if (!("serviceWorker" in navigator)){
-    if (swState) swState.textContent = "Kein Service Worker";
+  const setBtn = (text, disabled=false) => {
+    if (!btnUpdate) return;
+    btnUpdate.textContent = text;
+    btnUpdate.disabled = !!disabled;
+  };
+
+  if (window.__NOSW__){
+    if (swState) swState.textContent = "SW deaktiviert (Notfallmodus)";
+    setBtn("SW deaktiviert", true);
     return;
   }
 
-  let refreshing = false;
+  if (!("serviceWorker" in navigator)){
+    if (swState) swState.textContent = "Kein Service Worker";
+    setBtn("Updates nicht möglich", true);
+    return;
+  }
 
-  // When controller changes, reload once so the new SW takes over.
+  // Default state
+  setBtn("Auf Updates prüfen", false);
+
+  let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
     refreshing = true;
@@ -504,11 +512,13 @@ async function registerSW(){
     const reg = await navigator.serviceWorker.register("./sw.js");
     if (swState) swState.textContent = "Offline bereit";
 
-    // If there's already a waiting worker (e.g., after background update), show button
-    if (reg.waiting && btnUpdate){
-      btnUpdate.classList.remove("hidden");
+    const markUpdateAvailable = () => {
       if (swState) swState.textContent = "Update verfügbar";
-    }
+      setBtn("Update installieren", false);
+    };
+
+    // If there's already a waiting worker (e.g., after background update), show install state
+    if (reg.waiting) markUpdateAvailable();
 
     reg.addEventListener("updatefound", () => {
       const newWorker = reg.installing;
@@ -517,32 +527,51 @@ async function registerSW(){
       if (swState) swState.textContent = "Update wird geladen…";
 
       newWorker.addEventListener("statechange", () => {
-        // When installed and there's an existing controller, it's an update
         if (newWorker.state === "installed" && navigator.serviceWorker.controller){
-          if (swState) swState.textContent = "Update verfügbar";
-          if (btnUpdate) btnUpdate.classList.remove("hidden");
+          markUpdateAvailable();
         }
       });
     });
 
     if (btnUpdate){
       btnUpdate.addEventListener("click", async () => {
-        const waiting = reg.waiting;
-        if (!waiting){
-          // If no waiting SW, force an update check and try again
-          try{ await reg.update(); } catch {}
-          if (swState) swState.textContent = "Kein Update gefunden";
-          btnUpdate.classList.add("hidden");
+        // If update is already waiting: install now
+        if (reg.waiting){
+          if (swState) swState.textContent = "Installiere Update…";
+          setBtn("Installiere…", true);
+          reg.waiting.postMessage({ type: "SKIP_WAITING" });
           return;
         }
-        if (swState) swState.textContent = "Installiere Update…";
-        waiting.postMessage({ type: "SKIP_WAITING" });
-        // controllerchange will reload the app
+
+        // Otherwise: check for updates
+        setBtn("Prüfe…", true);
+        if (swState) swState.textContent = "Prüfe Updates…";
+
+        try { await reg.update(); } catch {}
+
+        // Wait a moment for updatefound/installing to settle
+        const waitMs = async (ms) => new Promise(r => setTimeout(r, ms));
+        for (let i=0;i<8;i++){
+          if (reg.waiting){
+            if (swState) swState.textContent = "Installiere Update…";
+            setBtn("Installiere…", true);
+            reg.waiting.postMessage({ type: "SKIP_WAITING" });
+            return;
+          }
+          // If installing, give it a bit more time
+          if (reg.installing) await waitMs(350);
+          else await waitMs(200);
+        }
+
+        // No update
+        if (swState) swState.textContent = "Kein Update gefunden";
+        setBtn("Auf Updates prüfen", false);
       });
     }
   } catch(e){
     console.warn(e);
     if (swState) swState.textContent = "SW Fehler";
+    setBtn("Updates nicht möglich", true);
   }
 }
 
