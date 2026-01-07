@@ -1,4 +1,5 @@
 import { dbGetAll, dbPut, dbPutMany, dbGet, dbClear } from "./db.js";
+import { SG1_CARDS } from "./cards_sg1.js";
 
 const $ = (id) => document.getElementById(id);
 const panels = { home: $("panelHome"), setup: $("panelSetup"), review: $("panelReview"), stats: $("panelStats") };
@@ -47,6 +48,11 @@ let session={ queue:[], idx:0, current:null, revealed:false, checked:false, pick
 
 async function loadAll(){
   allCards = await dbGetAll("cards");
+  // ✅ Seed SG1 on first start (no import needed)
+  if (!allCards.length){
+    await dbPutMany("cards", SG1_CARDS);
+    allCards = await dbGetAll("cards");
+  }
   const st = await dbGetAll("state");
   allState = new Map(st.map(s=>[s.id,s]));
   const s = await dbGet("settings","main");
@@ -477,31 +483,23 @@ $("btnResetAll").onclick=resetAll;
 });
 
 async function registerSW(){
+  if (window.__NOSW__){
+    const swState = $("swState");
+    if (swState) swState.textContent = "SW deaktiviert (Notfallmodus)";
+    return;
+  }
+
   const swState = $("swState");
   const btnUpdate = $("btnUpdate");
 
-  const setBtn = (text, disabled=false) => {
-    if (!btnUpdate) return;
-    btnUpdate.textContent = text;
-    btnUpdate.disabled = !!disabled;
-  };
-
-  if (window.__NOSW__){
-    if (swState) swState.textContent = "SW deaktiviert (Notfallmodus)";
-    setBtn("SW deaktiviert", true);
-    return;
-  }
-
   if (!("serviceWorker" in navigator)){
     if (swState) swState.textContent = "Kein Service Worker";
-    setBtn("Updates nicht möglich", true);
     return;
   }
 
-  // Default state
-  setBtn("Auf Updates prüfen", false);
-
   let refreshing = false;
+
+  // When controller changes, reload once so the new SW takes over.
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
     refreshing = true;
@@ -512,13 +510,11 @@ async function registerSW(){
     const reg = await navigator.serviceWorker.register("./sw.js");
     if (swState) swState.textContent = "Offline bereit";
 
-    const markUpdateAvailable = () => {
+    // If there's already a waiting worker (e.g., after background update), show button
+    if (reg.waiting && btnUpdate){
+      btnUpdate.classList.remove("hidden");
       if (swState) swState.textContent = "Update verfügbar";
-      setBtn("Update installieren", false);
-    };
-
-    // If there's already a waiting worker (e.g., after background update), show install state
-    if (reg.waiting) markUpdateAvailable();
+    }
 
     reg.addEventListener("updatefound", () => {
       const newWorker = reg.installing;
@@ -527,51 +523,32 @@ async function registerSW(){
       if (swState) swState.textContent = "Update wird geladen…";
 
       newWorker.addEventListener("statechange", () => {
+        // When installed and there's an existing controller, it's an update
         if (newWorker.state === "installed" && navigator.serviceWorker.controller){
-          markUpdateAvailable();
+          if (swState) swState.textContent = "Update verfügbar";
+          if (btnUpdate) btnUpdate.classList.remove("hidden");
         }
       });
     });
 
     if (btnUpdate){
       btnUpdate.addEventListener("click", async () => {
-        // If update is already waiting: install now
-        if (reg.waiting){
-          if (swState) swState.textContent = "Installiere Update…";
-          setBtn("Installiere…", true);
-          reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        const waiting = reg.waiting;
+        if (!waiting){
+          // If no waiting SW, force an update check and try again
+          try{ await reg.update(); } catch {}
+          if (swState) swState.textContent = "Kein Update gefunden";
+          btnUpdate.classList.add("hidden");
           return;
         }
-
-        // Otherwise: check for updates
-        setBtn("Prüfe…", true);
-        if (swState) swState.textContent = "Prüfe Updates…";
-
-        try { await reg.update(); } catch {}
-
-        // Wait a moment for updatefound/installing to settle
-        const waitMs = async (ms) => new Promise(r => setTimeout(r, ms));
-        for (let i=0;i<8;i++){
-          if (reg.waiting){
-            if (swState) swState.textContent = "Installiere Update…";
-            setBtn("Installiere…", true);
-            reg.waiting.postMessage({ type: "SKIP_WAITING" });
-            return;
-          }
-          // If installing, give it a bit more time
-          if (reg.installing) await waitMs(350);
-          else await waitMs(200);
-        }
-
-        // No update
-        if (swState) swState.textContent = "Kein Update gefunden";
-        setBtn("Auf Updates prüfen", false);
+        if (swState) swState.textContent = "Installiere Update…";
+        waiting.postMessage({ type: "SKIP_WAITING" });
+        // controllerchange will reload the app
       });
     }
   } catch(e){
     console.warn(e);
     if (swState) swState.textContent = "SW Fehler";
-    setBtn("Updates nicht möglich", true);
   }
 }
 
