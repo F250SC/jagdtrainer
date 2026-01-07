@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <title>Jagdtrainer Bayern</title>
-  <link rel="stylesheet" href="styles.css?v=1767765785" />
+  <link rel="stylesheet" href="styles.css?v=1767717403" />
 </head>
 <body>
   <div id="app">
@@ -245,33 +245,50 @@
     <footer class="footer">
       <div class="footerRow">
         <span class="muted">Offline-PWA · Daten bleiben lokal · <span id="swState">Cache…</span></span>
-        <button class="btn small" id="btnUpdate">Auf Updates prüfen</button>
+        <button class="btn small" id="btnUpdate">Auf Update prüfen</button>
       </div>
     </footer>
   </div>
 
-  <script type="module" src="app.js?v=1767765785"></script>
+  <script type="module" src="app.js"></script>
 
-  <script>
-  (function(){
-    function showBanner(msg){
-      let el = document.getElementById("bootError");
-      if(!el){
-        el = document.createElement("div");
-        el.id="bootError";
-        el.style.cssText="position:fixed;left:12px;right:12px;bottom:70px;z-index:99999;padding:12px 14px;border-radius:14px;background:#3b0a0a;color:#fff;border:1px solid rgba(255,255,255,.25);font-family:system-ui;font-size:13px;line-height:1.35;white-space:pre-wrap;";
-        document.body.appendChild(el);
-      }
-      el.textContent = msg;
+<script>
+(function(){
+  // Visible error banner
+  function showBanner(msg){
+    let el = document.getElementById("bootError");
+    if(!el){
+      el = document.createElement("div");
+      el.id="bootError";
+      el.style.cssText="position:fixed;left:12px;right:12px;bottom:70px;z-index:99999;padding:12px 14px;border-radius:14px;background:#3b0a0a;color:#fff;border:1px solid rgba(255,255,255,.25);font-family:system-ui;font-size:13px;line-height:1.35;white-space:pre-wrap;";
+      document.body.appendChild(el);
     }
-    window.addEventListener("error", function(e){
-      showBanner("⚠️ JavaScript Fehler (Buttons reagieren dann nicht)\n" + (e && e.message ? e.message : String(e)));
-    });
-    window.addEventListener("unhandledrejection", function(e){
-      showBanner("⚠️ Promise Fehler\n" + (e && e.reason ? String(e.reason) : "unbekannt"));
-    });
-  })();
-  </script>
+    el.textContent = msg;
+  }
+
+  window.addEventListener("error", function(e){
+    showBanner("⚠️ JavaScript Fehler (Buttons reagieren dann nicht)\n" + (e && e.message ? e.message : String(e)));
+  });
+  window.addEventListener("unhandledrejection", function(e){
+    showBanner("⚠️ Promise Fehler\n" + (e && e.reason ? String(e.reason) : "unbekannt"));
+  });
+
+  async function nukeSWAndCaches(){
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+    } catch(_e){}
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch(_e){}
+  }
+})();
+</script>
 
 </body>
 </html>
